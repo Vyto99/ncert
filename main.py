@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -24,15 +24,33 @@ async def check_question(data: QuestionInput):
     response = client.responses.create(
         model="gpt-4o-mini",
         instructions=(
-            "You are a strict NCERT question source checker. Do not guess."
-            " Only say 'Yes' if the content is present in the source."
-            " Respond with: 'Yes' or 'No'."
-            " If 'Yes', also include Chapter, Topic, Subtopic."
-            " If 'No', say only 'No'."
+            "You're a strict NCERT checker. ONLY answer 'Yes' if the exact concept or line exists in the files."
+            " If not present, answer 'No'. If 'Yes', return Chapter, Topic, Subtopic from the matched content."
+            " Never guess or use external knowledge. Use only the provided vector search results."
         ),
         input=input_messages,
         tools=tools,
         include=["file_search_call.results"]
     )
 
-    return {"answer": response.output_text.strip()}
+    # Extract and evaluate file_search results
+    found = False
+    matched_snippet = ""
+    file_search_results = []
+
+    for output_item in response.output:
+        if output_item.type == "file_search_call":
+            file_search_results = output_item.results
+            if file_search_results:
+                found = True
+                matched_snippet = file_search_results[0].text.strip()
+
+    if not found:
+        return {"answer": "No"}
+
+    # Optionally: you can try to extract metadata like Chapter/Topic/Subtopic
+    # For now, we assume it's embedded in the text
+    return {
+        "answer": "Yes",
+        "matched_text": matched_snippet[:500]  # Optional preview
+    }
